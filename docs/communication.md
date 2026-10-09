@@ -1,5 +1,7 @@
 # 通信基础框架
 
+建议先运行 [PING/PONG 最小通信案例](../examples/comm_echo/README.md)，按“协议注入、TX 入队、socket 收发、RX 出队”的顺序阅读实现。演示协议仅属于案例，通信核心仍不预设线路格式。
+
 ## 保留和移除的边界
 
 从 communication_framework 移植 `RingBuffer`、`FrameQueue`、`FrameChannel` 及 pthread 后端。队列仍按值复制消息，关闭后禁止投递、允许排空，并唤醒等待线程。诊断统计和单调时钟等待保持上游实现。

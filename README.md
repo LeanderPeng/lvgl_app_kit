@@ -17,6 +17,8 @@
 
 **没有预设线路协议。** 框架没有 AA55、CRC、字节序、版本号、命令表、应答格式或重试策略。`comm_frame_t` 仅是内存消息容器，不能直接在线路上传输。未注入协议时，`comm_link_init()` 拒绝启动。
 
+想先理解通信调用链，可从 [PING/PONG 最小通信案例](examples/comm_echo/README.md) 入手：通过本地 socket 完成一次往返，并支持限制每次读写 2 字节的分段模式。案例协议独立放在 `examples/comm_echo`，不会成为框架默认协议。
+
 ## 快速运行
 
 Linux 需要 CMake ≥ 3.16、C99/C++17 编译器、pthread。SDL 模式另需 pkg-config 和 SDL2 开发包。
@@ -63,6 +65,7 @@ cmake --build build-fbdev -j
 
 ```cmake
 set(LAK_BUILD_DEMO OFF CACHE BOOL "" FORCE)
+set(LAK_BUILD_COMM_EXAMPLE OFF CACHE BOOL "" FORCE)
 set(LAK_BACKEND HEADLESS CACHE STRING "" FORCE)
 add_subdirectory(third_party/lvgl_app_kit)
 add_executable(my_product main.c pages.c protocol.c)
@@ -82,6 +85,7 @@ communication/         不预设协议的通信核心
 ports/linux/           pthread、fd、SDL/FBDEV/HEADLESS 端口
 config/lv_conf.h        默认 LVGL 配置
 examples/linux/        通用示例，不包含产品业务
+examples/comm_echo/    独立协议注入与本地 socket 收发案例
 external/lvgl/         固定版本的官方子模块
 docs/                  接入契约、来源和验证记录
 ```
