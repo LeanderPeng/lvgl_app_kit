@@ -7,16 +7,19 @@
 ```text
 product/
   CMakeLists.txt
-  main.c
+  main.c                 仅调用应用入口
+  app/                   组合根：初始化、实例所有权、模块连接与退出
   config/lv_conf.h
-  pages/                 页面实现与资源
-  model/                 持久业务状态
-  protocol/              组帧、校验、命令、事务策略
+  application/           产品消息处理、服务调用与事务策略
+  domain/                独立于页面存活的产品状态模型
+  presentation/pages/    生命周期、用户意图与模型到显示数据的转换
+  presentation/views/    控件、布局、样式与资源
+  protocol/              产品编解码及消息字段转换
   platform/              显示/输入/串口初始化和工具链
   third_party/lvgl_app_kit/
 ```
 
-1. 首先构建本框架 SDL 示例，确认开发机环境可用。
+1. 首先阅读 [架构说明](architecture.md)，构建本框架分层示例，运行 `lak_demo --tour`，确认开发机环境与完整收发流程可用。无桌面时选择 HEADLESS。
 2. 外部工程设置 `LAK_BUILD_DEMO=OFF`，用 add_subdirectory 引入框架，链接需要的目标。框架 CMake 会编译 Linux 端口，但应用只需链接实际使用的库。
 3. 若已有自己的 LVGL 显示适配，选择 HEADLESS 构建配置以关闭 SDL/FBDEV 内置驱动，并不链接 `lak_display_linux`；自行创建显示和输入设备，注册 tick。进程内只链接一套 LVGL。
 4. 从一个最小页面开始移植，转换 LVGL 旧版本 API、图片格式、字体资源及事件接口。旧工程的 LVGL 8 显示驱动不能直接作为 LVGL 9 驱动使用。
@@ -24,6 +27,10 @@ product/
 6. 独立注入项目协议。先使用可控字节流验证拆包、粘包、错误恢复，再接串口/网络。
 7. 使用 RX/TX 通道连接业务/通信任务与 GUI，确认队列容量及错误策略。
 8. 最后在目标 Linux 设备验证显示刷新、触摸、时钟、断连恢复和长期运行。
+
+新工程可以参照 `examples/linux` 的模块组织替换模型、协议和页面，不应把整个产品继续堆入 `main.c`。建议分开链接 `lak_navigation` 与 `lak_gui_worker`；前者不依赖通信，后者不依赖导航。页面通过组合根注入的命令回调调用应用，应用通过通知回调联系页面，两者不相互包含具体实现。
+
+应用先建立模型、服务和消息工作器，再处理外部消息。页面是否已经创建不影响模型更新；页面 `before_show` 必须从模型恢复显示。`examples/linux --tour` 演示这种启动与切换顺序。实际项目若将通信移到其他线程，连接只归通信线程操作，GUI 模型和 LVGL 仍归 GUI 线程，跨线程交接使用同步通道。
 
 框架不自动引入旧项目源码、不读取外部私有路径，也不包含任何产品页面、命令或厂商库。参考项目仅用于理解生命周期和分层设计。
 

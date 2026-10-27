@@ -13,7 +13,7 @@
 ```text
 GUI/业务任务 -> TX 通道 -> comm_link -> 项目 encode -> 非阻塞 transport.write
 非阻塞 transport.read -> RingBuffer -> 项目 decode -> RX 通道
-RX 通道 -> GUI 桥接定时器 -> 系统/浮层/当前页面事件
+RX 通道 -> GUI 工作器 -> 产品消息处理 -> 模型 -> 页面刷新
 ```
 
 `comm_link_t` 由一个通信任务独占。TX/RX 使用 pthread 通道以跨线程；非阻塞核心队列与 RingBuffer 本身不提供并发保护。通信线程禁止操作 LVGL 对象。
@@ -49,6 +49,12 @@ send/入队成功只表示本地接受，不能证明设备已经执行。队列
 调用者负责打开、配置和关闭 fd。`comm_transport_fd_init()` 设置 O_NONBLOCK，不取得 fd 所有权。socket 发送使用 MSG_NOSIGNAL；UART 应设 raw 模式、正确波特率、VMIN=1，避免零长度读取被误认为连接结束。该端口面向串口和流式 socket，不适用于数据报。
 
 ## GUI 桥接
+
+大型应用使用 `lak_gui_worker`：`lak_gui_worker_init(&worker, &rx, handler, context, 5, 4)` 创建 GUI 接收定时器，`handler(context, frame)` 在 GUI 线程被调用。首次使用将 worker 零初始化。工作器不依赖导航或活动页面，不创建额外线程；收到数据后由产品处理器更新模型，再通知页面。页面创建及重新显示时从模型获取状态，因此没有页面时也能处理消息。
+
+`frame` 仅在回调期间有效。需要保留的信息应复制到产品模型；不能保存其指针。所有 worker API 只能在 GUI 线程调用；不可在自身消息回调中销毁或重入同一工作器。退出时先停止生产者及其线程，再销毁工作器，最后销毁队列。示例采用单线程轮询，无需线程 join。
+
+`comm_bridge` 保留原接口，适用于直接把帧交给页面的小型接入。它与 `lak_gui_worker` 是两种消费方式，不能同时读取同一 RX 队列，否则消息会被不同消费者分走。下面描述的是原桥接方式：
 
 使用 `lak_comm_bridge_init(&bridge, &nav, &rx, project_event_id, 10, 4)` 建立定时器。注册并打开根页面后再启动生产者；即便顺序尚未完成，桥接器在没有当前页时也不会消费队列。
 

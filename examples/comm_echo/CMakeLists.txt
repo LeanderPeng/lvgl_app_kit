@@ -1,0 +1,5 @@
+add_executable(lak_comm_echo main.c demo_protocol.c)
+target_link_libraries(lak_comm_echo PRIVATE lak_linux)
+target_compile_definitions(lak_comm_echo PRIVATE _POSIX_C_SOURCE=200809L)
+target_compile_options(lak_comm_echo PRIVATE -Wall -Wextra -Werror -Wpedantic)
+set_target_properties(lak_comm_echo PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

@@ -42,46 +42,14 @@ if(LAK_SDL)
     target_link_libraries(lvgl PUBLIC PkgConfig::SDL2)
 endif()
 
-add_library(lak_comm STATIC
-    communication/src/comm_ringbuffer.c
-    communication/src/comm_frame_queue.c
-    communication/src/comm_frame_channel.c
-    communication/src/comm_link.c)
-target_include_directories(lak_comm PUBLIC communication/include)
-
-find_package(Threads REQUIRED)
-add_library(lak_linux STATIC
-    ports/linux/comm_frame_queue_pthread.c
-    ports/linux/comm_frame_channel_pthread.c
-    ports/linux/comm_transport_fd.c)
-target_include_directories(lak_linux PUBLIC ports/linux)
-target_link_libraries(lak_linux PUBLIC lak_comm Threads::Threads)
-
-add_library(lak_gui STATIC src/navigation.c src/comm_bridge.c)
-target_include_directories(lak_gui PUBLIC include)
-target_link_libraries(lak_gui PUBLIC lvgl::lvgl lak_comm m)
-
-add_library(lak_display_linux STATIC ports/linux/linux_display.c)
-target_include_directories(lak_display_linux PUBLIC include)
-target_link_libraries(lak_display_linux PUBLIC lvgl::lvgl m)
-target_compile_definitions(lak_display_linux PRIVATE _POSIX_C_SOURCE=200809L)
-
-foreach(target lak_comm lak_linux lak_gui lak_display_linux)
-    target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -Wpedantic)
-endforeach()
+# 模块拥有各自的源码和依赖，顶层只负责配置与装配。
+add_subdirectory(communication)
+add_subdirectory(src)
+add_subdirectory(ports/linux)
 
 if(LAK_BUILD_DEMO)
-    add_executable(lak_demo examples/linux/main.c)
-    target_link_libraries(lak_demo PRIVATE lak_gui lak_linux lak_display_linux)
-    target_compile_definitions(lak_demo PRIVATE _POSIX_C_SOURCE=200809L)
-    target_compile_options(lak_demo PRIVATE -Wall -Wextra -Werror -Wpedantic)
+    add_subdirectory(examples/linux)
 endif()
-
 if(LAK_BUILD_COMM_EXAMPLE)
-    add_executable(lak_comm_echo
-        examples/comm_echo/main.c
-        examples/comm_echo/demo_protocol.c)
-    target_link_libraries(lak_comm_echo PRIVATE lak_linux)
-    target_compile_definitions(lak_comm_echo PRIVATE _POSIX_C_SOURCE=200809L)
-    target_compile_options(lak_comm_echo PRIVATE -Wall -Wextra -Werror -Wpedantic)
+    add_subdirectory(examples/comm_echo)
 endif()
