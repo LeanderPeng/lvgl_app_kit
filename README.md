@@ -103,6 +103,7 @@ docs/                  接入契约、来源和验证记录
 - [导航接口和生命周期](docs/navigation.md)
 - [整体架构与模块边界](docs/architecture.md)
 - [分层应用的运行与阅读顺序](examples/linux/README.md)
+- [第 1 课：设置目标温度的带参数 Action](docs/action-practice.md)
 - [通信协议注入与线程交接](docs/communication.md)
 - [外部项目移植步骤](docs/integration.md)
 - [代码来源与差异](docs/provenance.md)

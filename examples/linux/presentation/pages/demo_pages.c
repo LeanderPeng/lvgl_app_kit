@@ -28,27 +28,45 @@ static void refresh_page(lak_page_t *page)
         snprintf(temperature, sizeof(temperature), "--.- C");
     }
     if (model->request_pending) status = "Waiting for the simulated device...";
-    else if (model->failed) status = "Request failed. Query again to retry.";
-    else if (model->has_temperature) status = "Temperature received; the model is up to date.";
+    else if (model->failed) status = "Request failed. Submit again to retry.";
+    else if (model->has_temperature || model->has_target_temperature)
+        status = "Device replied; the model is up to date.";
     else status = "Ready to query the simulated device.";
     snprintf(revision, sizeof(revision), "Model revision: %" PRIu32 "   |   state survives page switches",
              model->revision);
     demo_view_update(state->view, temperature, status, revision, !model->request_pending);
+    char target[64];
+    if (model->has_target_temperature) {
+        snprintf(target, sizeof(target), "Confirmed: %ld.%ld C",
+                 (long)(model->target_temperature_tenths / 10),
+                 (long)(model->target_temperature_tenths % 10));
+    } else snprintf(target, sizeof(target), "Confirmed: --.- C");
+    int32_t selection = model->pending_kind == DEMO_REQUEST_SET_TARGET ? model->requested_target_tenths :
+        model->has_target_temperature ? model->target_temperature_tenths : 250;
+    demo_view_update_target(state->view, target, selection,
+        DEMO_TARGET_MIN_TENTHS, DEMO_TARGET_MAX_TENTHS, !model->request_pending);
 }
 
-static void page_action(void *context, demo_view_action_t action)
+static void page_action(void *context, const demo_view_action_t *action)
 {
     demo_page_state_t *state = context;
     lak_nav_action_t navigation_action = LAK_NAV_SINGLE;
     lak_page_id_t destination = LAK_PAGE_NONE;
-    if (action == DEMO_VIEW_QUERY) {
+    if (action->kind == DEMO_VIEW_QUERY) {
         /* 页面只提交用户意图；应用层负责发送请求和更新模型。 */
         if (!state->context->query_temperature(state->context->command_context))
             fprintf(stderr, "Temperature query was not accepted\n");
         refresh_page(state->page);
         return;
     }
-    switch (action) {
+    if (action->kind == DEMO_VIEW_SET_TARGET_TEMPERATURE) {
+        if (!state->context->set_target_temperature(state->context->command_context,
+                                                    action->temperature_tenths))
+            fprintf(stderr, "Target temperature was not accepted\n");
+        refresh_page(state->page);
+        return;
+    }
+    switch (action->kind) {
     case DEMO_VIEW_OPEN_SETTINGS: destination = DEMO_PAGE_SETTINGS; break;
     case DEMO_VIEW_OPEN_DETAILS: destination = DEMO_PAGE_DETAILS; break;
     case DEMO_VIEW_OPEN_HOME: destination = DEMO_PAGE_HOME; break;
@@ -93,7 +111,8 @@ static void page_event(lak_page_t *page, lak_event_t *event)
 
 bool demo_pages_register(lak_nav_t *nav, const demo_pages_context_t *context)
 {
-    if (!nav || !context || !context->model || !context->query_temperature) return false;
+    if (!nav || !context || !context->model || !context->query_temperature ||
+        !context->set_target_temperature) return false;
     for (lak_page_id_t id = DEMO_PAGE_HOME; id <= DEMO_PAGE_DETAILS; ++id) {
         lak_page_definition_t definition = {0};
         definition.id = id;

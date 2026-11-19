@@ -14,6 +14,7 @@ enum {
 typedef struct {
     const demo_model_t *model;
     bool (*query_temperature)(void *context);
+    bool (*set_target_temperature)(void *context, int32_t temperature_tenths);
     void *command_context;
 } demo_pages_context_t;
 

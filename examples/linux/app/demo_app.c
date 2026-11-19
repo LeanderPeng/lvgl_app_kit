@@ -69,6 +69,11 @@ static bool query_temperature(void *context)
     return demo_gui_worker_query(context);
 }
 
+static bool set_target_temperature(void *context, int32_t temperature_tenths)
+{
+    return demo_gui_worker_set_target_temperature(context, temperature_tenths);
+}
+
 static void model_changed(void *context)
 {
     demo_app_t *app = context;
@@ -150,7 +155,12 @@ int demo_app_run(int argc, char **argv)
     demo_model_init(&app.model);
     demo_service_init(&app.service, &app.connection.host.tx);
     if (!lak_nav_init(&app.navigation, app.display)) goto cleanup;
-    app.pages = (demo_pages_context_t){&app.model, query_temperature, &app.worker};
+    app.pages = (demo_pages_context_t){
+        .model = &app.model,
+        .query_temperature = query_temperature,
+        .set_target_temperature = set_target_temperature,
+        .command_context = &app.worker
+    };
     if (!demo_pages_register(&app.navigation, &app.pages) ||
         !demo_gui_worker_init(&app.worker, &app.connection.host.rx, &app.model,
             &app.service, model_changed, &app)) goto cleanup;

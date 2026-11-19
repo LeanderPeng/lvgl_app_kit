@@ -3,7 +3,8 @@
 
 typedef struct {
     struct demo_view *view;
-    demo_view_action_t action;
+    demo_view_action_kind_t action;
+    int32_t temperature_tenths;
 } button_binding_t;
 
 struct demo_view {
@@ -12,6 +13,10 @@ struct demo_view {
     lv_obj_t *status;
     lv_obj_t *revision;
     lv_obj_t *query;
+    lv_obj_t *target;
+    lv_obj_t *selection;
+    lv_obj_t *slider;
+    lv_obj_t *preset;
     demo_view_action_fn action;
     void *context;
     button_binding_t buttons[3];
@@ -34,11 +39,12 @@ static void button_clicked(lv_event_t *event)
 {
     const button_binding_t *binding = lv_event_get_user_data(event);
     demo_view_t *view = binding->view;
-    if (view->action) view->action(view->context, binding->action);
+    demo_view_action_t action = {binding->action, binding->temperature_tenths};
+    if (view->action) view->action(view->context, &action);
 }
 
 static lv_obj_t *create_button(demo_view_t *view, const char *text, int x,
-                               int width, demo_view_action_t action, bool primary)
+                               int width, demo_view_action_kind_t action, bool primary)
 {
     if (view->button_count >= sizeof(view->buttons) / sizeof(view->buttons[0])) return NULL;
     lv_obj_t *button = lv_button_create(view->root);
@@ -60,6 +66,18 @@ static lv_obj_t *create_button(demo_view_t *view, const char *text, int x,
     return button;
 }
 
+static void slider_event(lv_event_t *event)
+{
+    demo_view_t *view = lv_event_get_user_data(event);
+    int32_t value = lv_slider_get_value(view->slider);
+    lv_label_set_text_fmt(view->selection, "Selection: %ld.%ld C (release to apply)",
+                           (long)(value / 10), (long)(value % 10));
+    if (lv_event_get_code(event) != LV_EVENT_RELEASED) return;
+    /* 滑条和预设按钮上报相同意图；页面无需知道输入来自哪个控件。 */
+    demo_view_action_t action = {DEMO_VIEW_SET_TARGET_TEMPERATURE, value};
+    if (view->action) view->action(view->context, &action);
+}
+
 demo_view_t *demo_view_create(lv_obj_t *screen, demo_view_kind_t kind,
                               demo_view_action_fn action, void *context)
 {
@@ -79,7 +97,7 @@ demo_view_t *demo_view_create(lv_obj_t *screen, demo_view_kind_t kind,
     lv_obj_set_scrollable(screen, false);
 
     const char *title = kind == DEMO_VIEW_HOME ? "A layered application, running." :
-                        kind == DEMO_VIEW_SETTINGS ? "Pages have a clear responsibility." :
+                        kind == DEMO_VIEW_SETTINGS ? "Set a target. Keep the layers." :
                         "One message. Clear boundaries.";
     if (!create_label(view->root, "LVGL / APP KIT", 32, 25, &lv_font_montserrat_14, 0x5EE2B0) ||
         !create_label(view->root, title, 32, 64, &lv_font_montserrat_28, 0xF0F4F8) ||
@@ -108,11 +126,28 @@ demo_view_t *demo_view_create(lv_obj_t *screen, demo_view_kind_t kind,
         if (!view->query ||
             !create_button(view, "Pages", 270, 160, DEMO_VIEW_OPEN_SETTINGS, false) ||
             !create_button(view, "Layers", 448, 160, DEMO_VIEW_OPEN_DETAILS, false)) goto failed;
+    } else if (kind == DEMO_VIEW_SETTINGS) {
+        if (!create_label(card, "TARGET TEMPERATURE", 0, 0,
+                           &lv_font_montserrat_14, 0xA3B4C4)) goto failed;
+        view->target = create_label(card, "Confirmed: --.- C", 0, 24,
+                                     &lv_font_montserrat_28, 0x5EE2B0);
+        view->slider = lv_slider_create(card);
+        view->selection = create_label(card, "", 0, 100, &lv_font_montserrat_14, 0xC3D0DC);
+        if (!view->target || !view->slider || !view->selection) goto failed;
+        lv_obj_set_pos(view->slider, 12, 78);
+        lv_obj_set_size(view->slider, 500, 12);
+        lv_obj_add_event_cb(view->slider, slider_event, LV_EVENT_VALUE_CHANGED, view);
+        lv_obj_add_event_cb(view->slider, slider_event, LV_EVENT_RELEASED, view);
+        view->status = create_label(card, "", 0, 126, &lv_font_montserrat_14, 0xE6EDF4);
+        view->revision = create_label(card, "", 0, 148, &lv_font_montserrat_14, 0xA3B4C4);
+        if (!create_button(view, "<  Back", 32, 150, DEMO_VIEW_BACK, false)) goto failed;
+        view->preset = create_button(view, "Set 26 C", 200, 190,
+                                      DEMO_VIEW_SET_TARGET_TEMPERATURE, true);
+        if (!view->preset) goto failed;
+        view->buttons[view->button_count - 1].temperature_tenths = 260;
+        if (!create_button(view, "Home", 408, 150, DEMO_VIEW_OPEN_HOME, false)) goto failed;
     } else {
-        const char *body = kind == DEMO_VIEW_SETTINGS ?
-            "Pages own lifecycle and user intent.\n"
-            "Views own widgets, layout and styles.\n\n"
-            "Returning to a page reads the latest model." :
+        const char *body =
             "Device -> transport -> codec -> worker -> model\n\n"
             "Pages render state and submit application commands.\n"
             "The model survives while a page is hidden.";
@@ -121,8 +156,6 @@ demo_view_t *demo_view_create(lv_obj_t *screen, demo_view_kind_t kind,
         view->revision = create_label(card, "", 0, 148, &lv_font_montserrat_14, 0xA3B4C4);
         if (!create_button(view, "<  Back", 32, 150, DEMO_VIEW_BACK, false) ||
             !create_button(view, "Home", 200, 150, DEMO_VIEW_OPEN_HOME, true)) goto failed;
-        if (kind == DEMO_VIEW_SETTINGS &&
-            !create_button(view, "Layers", 368, 160, DEMO_VIEW_OPEN_DETAILS, false)) goto failed;
     }
     if (!view->status || !view->revision) goto failed;
     return view;
@@ -142,6 +175,24 @@ void demo_view_update(demo_view_t *view, const char *temperature,
     if (view->query) {
         if (query_enabled) lv_obj_remove_state(view->query, LV_STATE_DISABLED);
         else lv_obj_add_state(view->query, LV_STATE_DISABLED);
+    }
+}
+
+void demo_view_update_target(demo_view_t *view, const char *target, int32_t value,
+                             int32_t minimum, int32_t maximum, bool enabled)
+{
+    if (!view || !view->slider) return;
+    lv_label_set_text(view->target, target);
+    lv_slider_set_range(view->slider, minimum, maximum);
+    lv_slider_set_value(view->slider, value, LV_ANIM_OFF);
+    lv_label_set_text_fmt(view->selection, "Selection: %ld.%ld C (release to apply)",
+                           (long)(value / 10), (long)(value % 10));
+    if (enabled) {
+        lv_obj_remove_state(view->slider, LV_STATE_DISABLED);
+        lv_obj_remove_state(view->preset, LV_STATE_DISABLED);
+    } else {
+        lv_obj_add_state(view->slider, LV_STATE_DISABLED);
+        lv_obj_add_state(view->preset, LV_STATE_DISABLED);
     }
 }
 

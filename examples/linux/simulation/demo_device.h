@@ -9,6 +9,7 @@ typedef struct {
     const comm_frame_channel_t *rx;
     const comm_frame_channel_t *tx;
     int32_t temperature_tenths;
+    int32_t target_temperature_tenths;
 } demo_device_t;
 
 void demo_device_init(demo_device_t *device, const comm_frame_channel_t *rx,

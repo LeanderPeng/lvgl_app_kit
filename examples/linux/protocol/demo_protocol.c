@@ -10,19 +10,20 @@ void demo_protocol_make_query(comm_frame_t *frame)
     frame->id = DEMO_MESSAGE_QUERY;
 }
 
-bool demo_protocol_make_temperature(comm_frame_t *frame, int32_t temperature)
+static bool make_number(comm_frame_t *frame, uint32_t id, int32_t temperature)
 {
+    if (!frame) return false;
     memset(frame, 0, sizeof(*frame));
-    frame->id = DEMO_MESSAGE_TEMPERATURE;
+    frame->id = id;
     int length = snprintf((char *)frame->payload, sizeof(frame->payload), "%ld", (long)temperature);
     if (length < 0 || (size_t)length >= sizeof(frame->payload)) return false;
     frame->payload_length = (size_t)length;
     return true;
 }
 
-bool demo_protocol_read_temperature(const comm_frame_t *frame, int32_t *temperature)
+static bool read_number(const comm_frame_t *frame, uint32_t id, int32_t *temperature)
 {
-    if (!frame || !temperature || frame->id != DEMO_MESSAGE_TEMPERATURE ||
+    if (!frame || !temperature || frame->id != id ||
         !frame->payload_length || frame->payload_length > 11 ||
         frame->payload_length > sizeof(frame->payload)) return false;
     char number[12];
@@ -40,6 +41,36 @@ bool demo_protocol_read_temperature(const comm_frame_t *frame, int32_t *temperat
     return true;
 }
 
+bool demo_protocol_make_temperature(comm_frame_t *frame, int32_t temperature)
+{
+    return make_number(frame, DEMO_MESSAGE_TEMPERATURE, temperature);
+}
+
+bool demo_protocol_read_temperature(const comm_frame_t *frame, int32_t *temperature)
+{
+    return read_number(frame, DEMO_MESSAGE_TEMPERATURE, temperature);
+}
+
+bool demo_protocol_make_set_target(comm_frame_t *frame, int32_t temperature)
+{
+    return make_number(frame, DEMO_MESSAGE_SET_TARGET, temperature);
+}
+
+bool demo_protocol_read_set_target(const comm_frame_t *frame, int32_t *temperature)
+{
+    return read_number(frame, DEMO_MESSAGE_SET_TARGET, temperature);
+}
+
+bool demo_protocol_make_target(comm_frame_t *frame, int32_t temperature)
+{
+    return make_number(frame, DEMO_MESSAGE_TARGET, temperature);
+}
+
+bool demo_protocol_read_target(const comm_frame_t *frame, int32_t *temperature)
+{
+    return read_number(frame, DEMO_MESSAGE_TARGET, temperature);
+}
+
 static int encode(void *context, const comm_frame_t *frame, uint8_t *output,
                   size_t capacity, size_t *size)
 {
@@ -53,10 +84,15 @@ static int encode(void *context, const comm_frame_t *frame, uint8_t *output,
         *size = 6;
         return 0;
     }
+    const char *prefix;
+    if (frame->id == DEMO_MESSAGE_TEMPERATURE) prefix = "TEMP:";
+    else if (frame->id == DEMO_MESSAGE_SET_TARGET) prefix = "SET:";
+    else if (frame->id == DEMO_MESSAGE_TARGET) prefix = "TARGET:";
+    else return -1;
     int32_t temperature;
-    if (!demo_protocol_read_temperature(frame, &temperature)) return -1;
-    char encoded[18];
-    int length = snprintf(encoded, sizeof(encoded), "TEMP:%ld\n", (long)temperature);
+    if (!read_number(frame, frame->id, &temperature)) return -1;
+    char encoded[20];
+    int length = snprintf(encoded, sizeof(encoded), "%s%ld\n", prefix, (long)temperature);
     if (length < 0 || (size_t)length >= sizeof(encoded) || (size_t)length > capacity) return -1;
     /* 线路输出是字节序列，不要求调用者为字符串终止符额外留空间。 */
     memcpy(output, encoded, (size_t)length);
@@ -68,8 +104,8 @@ static comm_decode_result_t decode(void *context, comm_ringbuffer_t *input, comm
 {
     (void)context;
     if (!input || !frame) return COMM_DECODE_ERROR;
-    /* 最长线路消息为 TEMP: 加 11 位有符号整数和换行符。 */
-    uint8_t line[17];
+    /* 最长线路消息为 TARGET: 加 11 位有符号整数和换行符。 */
+    uint8_t line[19];
     size_t available = comm_ringbuffer_size(input);
     for (size_t i = 0; i < available && i < sizeof(line); ++i) {
         if (comm_ringbuffer_peek(input, i, &line[i], 1) != COMM_RINGBUFFER_OK)
@@ -78,15 +114,25 @@ static comm_decode_result_t decode(void *context, comm_ringbuffer_t *input, comm
         comm_frame_t decoded = {0};
         if (i == 5 && memcmp(line, "QUERY", 5) == 0) {
             demo_protocol_make_query(&decoded);
-        } else if (i > 5 && memcmp(line, "TEMP:", 5) == 0) {
-            decoded.id = DEMO_MESSAGE_TEMPERATURE;
-            decoded.payload_length = i - 5;
-            if (decoded.payload_length > sizeof(decoded.payload)) return COMM_DECODE_ERROR;
-            memcpy(decoded.payload, line + 5, decoded.payload_length);
-            int32_t temperature;
-            if (!demo_protocol_read_temperature(&decoded, &temperature)) return COMM_DECODE_ERROR;
         } else {
-            return COMM_DECODE_ERROR;
+            size_t prefix_length;
+            if (i > 5 && memcmp(line, "TEMP:", 5) == 0) {
+                decoded.id = DEMO_MESSAGE_TEMPERATURE;
+                prefix_length = 5;
+            } else if (i > 4 && memcmp(line, "SET:", 4) == 0) {
+                decoded.id = DEMO_MESSAGE_SET_TARGET;
+                prefix_length = 4;
+            } else if (i > 7 && memcmp(line, "TARGET:", 7) == 0) {
+                decoded.id = DEMO_MESSAGE_TARGET;
+                prefix_length = 7;
+            } else {
+                return COMM_DECODE_ERROR;
+            }
+            decoded.payload_length = i - prefix_length;
+            if (decoded.payload_length > sizeof(decoded.payload)) return COMM_DECODE_ERROR;
+            memcpy(decoded.payload, line + prefix_length, decoded.payload_length);
+            int32_t temperature;
+            if (!read_number(&decoded, decoded.id, &temperature)) return COMM_DECODE_ERROR;
         }
         if (comm_ringbuffer_discard(input, i + 1) != COMM_RINGBUFFER_OK) return COMM_DECODE_ERROR;
         *frame = decoded;

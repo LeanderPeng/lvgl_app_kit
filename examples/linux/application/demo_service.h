@@ -8,5 +8,6 @@ typedef struct { const comm_frame_channel_t *tx; } demo_service_t;
 void demo_service_init(demo_service_t *service, const comm_frame_channel_t *tx);
 /* 成功仅表示请求已进入本地队列，设备回复由工作器另行处理。 */
 bool demo_service_query_temperature(demo_service_t *service);
+bool demo_service_set_target_temperature(demo_service_t *service, int32_t temperature_tenths);
 
 #endif

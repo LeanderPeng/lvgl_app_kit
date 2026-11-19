@@ -18,7 +18,9 @@ cmake --build build-sdl --target lak_demo -j
 ./build-sdl/lak_demo
 ```
 
-启动时会自动查询一次温度，随后可以在界面中继续查询、进入其他页面并返回。关闭窗口或按 Ctrl+C 退出。案例通信只使用进程内创建的本地 socket，不连接真实设备。
+启动时会自动查询一次温度，随后可以在界面中继续查询、进入其他页面并返回。首页选择 `Pages` 进入设置页：拖动滑条并松手可设置 16.0～30.0°C 的目标温度，也可按 `Set 26 C` 使用预设。两种输入提交同一个带参数 Action，收到设备确认后才更新目标显示；实测温度独立保存。关闭窗口或按 Ctrl+C 退出。案例通信只使用进程内创建的本地 socket，不连接真实设备。
+
+源码讲解、小练习与生命周期复盘见[第 1 课：带参数 Action](../../docs/action-practice.md)。
 
 ### HEADLESS 自动教学演示
 
@@ -80,7 +82,7 @@ cmake --build build-fbdev --target lak_demo -j
 | `app/demo_app.*` | 参数、信号、初始化、回调连接、主循环、退出清理 |
 | `domain/demo_model.*` | 应用持久状态及更新，无 LVGL 和通信依赖 |
 | `application/demo_gui_worker.*` | 解释消息、更新模型、处理查询意图、通知界面 |
-| `application/demo_service.*` | 构造查询消息并投递 TX 通道 |
+| `application/demo_service.*` | 构造查询或设置目标温度消息并投递 TX 通道 |
 | `protocol/demo_protocol.*` | 案例编解码、消息标识和字段转换 |
 | `platform/demo_connection.*` | 本地连接两端、队列、link、fd 和收发调度，使用组装入口注入的协议接口 |
 | `simulation/demo_device.*` | 消费设备端命令、维护模拟温度、生成回复并投递设备端 TX |
@@ -98,6 +100,8 @@ cmake --build build-fbdev --target lak_demo -j
 ```text
 应用 → 模拟设备：QUERY\n
 模拟设备 → 应用：TEMP:<温度整数>\n
+应用 → 模拟设备：SET:<目标温度整数>\n
+模拟设备 → 应用：TARGET:<已确认目标温度整数>\n
 ```
 
 温度整数的单位为十分之一摄氏度。例如 `TEMP:253\n` 表示 `25.3 °C`，其中 `\n` 表示线路上的单个换行字节。
@@ -106,7 +110,7 @@ cmake --build build-fbdev --target lak_demo -j
 
 `comm_frame_t` 是内存消息容器，不能直接当作线路结构体发送。协议模块负责它与线路字节之间的转换；应用 worker 通过项目协议接口取得有意义的字段，再更新模型。
 
-案例同一时间只允许一个查询等待回复，超过 2 秒未收到回复会将请求标记为失败。请求限制和超时位于应用层；框架本身不规定事务编号、重试或超时策略。
+查询和设置共用单请求限制，同一时间只允许一个请求等待回复，超过 2 秒未收到匹配回复会将请求标记为失败。设置按回复类型和目标值匹配，查询回复不会被误当作设置确认。请求限制和超时位于应用层；框架本身不规定事务编号、重试或超时策略。
 
 ## 对照日志阅读调用链
 
